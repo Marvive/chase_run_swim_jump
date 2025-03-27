@@ -7,8 +7,10 @@ class Tooltip:
             "jump": "Space: Jump",
             "inventory": "E: Open/Close Inventory",
             "build": "B: Toggle Building Mode",
-            "interact": "F: Interact/Use Tool",
-            "select": "1-2: Quick Select Tools"
+            "interact": "F/Left Click: Interact/Use Tool",
+            "select": "1-2: Quick Select Tools",
+            "inventory_nav": "A/D or Arrows: Navigate Inventory",
+            "inventory_select": "Space/Enter: Select Tool"
         }
         self.font = pygame.font.Font(None, 24)
         self.show_help = True
@@ -29,7 +31,7 @@ class Tooltip:
     def draw(self, screen):
         if self.show_help:
             # Create semi-transparent background for tooltips
-            tooltip_surface = pygame.Surface((300, 180), pygame.SRCALPHA)
+            tooltip_surface = pygame.Surface((300, 240), pygame.SRCALPHA)
             tooltip_surface.fill((0, 0, 0, 150))
             
             # Draw tooltips
@@ -44,7 +46,7 @@ class Tooltip:
             
             # Draw help toggle instructions
             help_text = self.font.render("Press H to hide/show help", True, (255, 255, 255))
-            screen.blit(help_text, (10, 230))
+            screen.blit(help_text, (10, 300))
 
 class NotificationSystem:
     def __init__(self):

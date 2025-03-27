@@ -55,7 +55,13 @@ class Game:
                 self.running = False
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_SPACE:
-                    self.player.jump()
+                    if self.player.show_inventory:
+                        # If inventory is open, select the current tool
+                        self.player.switch_tool(self.player.inventory_slots[self.player.selected_slot]["name"])
+                        self.player.show_inventory = False
+                    else:
+                        # Otherwise jump
+                        self.player.jump()
                 elif event.key == pygame.K_e:
                     self.player.show_inventory = not self.player.show_inventory
                 elif event.key == pygame.K_b:
@@ -82,6 +88,12 @@ class Game:
                     elif event.key == pygame.K_RETURN:
                         self.player.switch_tool(self.player.inventory_slots[self.player.selected_slot]["name"])
                         self.player.show_inventory = False
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                # Only process mouse clicks when not in inventory mode
+                if not self.player.show_inventory:
+                    if event.button == 1:  # Left click
+                        # Instead of directly using the tool, trigger an interaction if close enough
+                        self.player.interact(self.world)
                         
         # Get keyboard state for movement
         keys = pygame.key.get_pressed()
