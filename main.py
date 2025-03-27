@@ -3,9 +3,13 @@ import random
 import sys
 from tools import Axe, Pickaxe, Hammer, BuildingSystem
 from sprites import Character
+from tool_sprites import AxeSprite, PickaxeSprite, HammerSprite
+from particles import ParticleSystem
+from sound_manager import SoundManager
 
 # Initialize Pygame
 pygame.init()
+pygame.mixer.init()
 
 # Constants
 SCREEN_WIDTH = 800
@@ -43,6 +47,11 @@ class Player:
             "pickaxe": Pickaxe(),
             "hammer": Hammer()
         }
+        self.tool_sprites = {
+            "axe": AxeSprite(),
+            "pickaxe": PickaxeSprite(),
+            "hammer": HammerSprite()
+        }
         self.current_tool = "axe"
         self.inventory = {
             "wood": 0,
@@ -54,9 +63,11 @@ class Player:
         self.selected_slot = 0
         self.inventory_slots = [
             {"name": "axe", "icon": "🪓"},
-            {"name": "pickaxe", "icon": "⛏️"},
-            {"name": "hammer", "icon": "🔨"}
+            {"name": "pickaxe", "icon": "⛏️"}
         ]
+        self.sound_manager = SoundManager()
+        self.is_swinging = False
+        self.swing_timer = 0
         
     def move(self, dx):
         self.x += dx
@@ -89,13 +100,33 @@ class Player:
             
         # Update current tool
         self.tools[self.current_tool].update()
+        
+        # Update swing animation
+        if self.is_swinging:
+            self.swing_timer += 1
+            if self.swing_timer >= 10:  # Swing animation duration
+                self.is_swinging = False
+                self.swing_timer = 0
             
     def draw(self, screen):
         # Draw character
         self.character.draw(screen, self.x, self.y, self.facing_right)
         
-        # Draw current tool
-        self.tools[self.current_tool].draw(screen, self.x, self.y, self.facing_right)
+        # Draw current tool or hammer if building
+        if self.building_system.building_mode:
+            self.tool_sprites["hammer"].draw(screen, 
+                                          self.x + (40 if self.facing_right else -40),
+                                          self.y + 20,
+                                          self.tools["hammer"].animation_frame * 5,
+                                          self.facing_right,
+                                          self.is_swinging)
+        else:
+            self.tool_sprites[self.current_tool].draw(screen,
+                                                    self.x + (40 if self.facing_right else -40),
+                                                    self.y + 20,
+                                                    self.tools[self.current_tool].animation_frame * 5,
+                                                    self.facing_right,
+                                                    self.is_swinging)
         
         # Draw resource inventory
         self.draw_resource_inventory(screen)
@@ -137,11 +168,12 @@ class Player:
             if i == self.selected_slot:
                 pygame.draw.rect(screen, SELECTED_ITEM, (x, y, slot_size, slot_size))
             
-            # Draw tool icon
-            font = pygame.font.Font(None, 48)
-            text = font.render(slot["icon"], True, (0, 0, 0))
-            text_rect = text.get_rect(center=(x + slot_size//2, y + slot_size//2))
-            screen.blit(text, text_rect)
+            # Draw tool sprite
+            tool_name = slot["name"]
+            if tool_name in self.tool_sprites:
+                self.tool_sprites[tool_name].draw_inventory(screen, 
+                                                          x + (slot_size - 32)//2,
+                                                          y + (slot_size - 32)//2)
             
             # Draw tool name
             name_font = pygame.font.Font(None, 24)
@@ -154,27 +186,46 @@ class Player:
             self.current_tool = tool_name
             
     def use_tool(self, world):
-        if self.tools[self.current_tool].use():
-            # Check for resource collection
-            mouse_pos = pygame.mouse.get_pos()
-            for tile in world.tiles:
-                if tile["rect"].collidepoint(mouse_pos):
-                    if self.current_tool == "axe" and tile["type"] == "tree":
-                        self.inventory["wood"] += 1
-                        world.remove_tile(tile)
-                    elif self.current_tool == "pickaxe" and tile["type"] == "stone":
-                        self.inventory["stone"] += 1
-                        world.remove_tile(tile)
-                    elif self.current_tool == "hammer" and self.building_system.building_mode:
-                        if self.building_system.build(self.inventory, self.building_system.current_blueprint):
-                            # Create building at mouse position
-                            world.add_building(mouse_pos[0], mouse_pos[1], 
-                                            self.building_system.current_blueprint)
+        if self.building_system.building_mode:
+            if self.tools["hammer"].use():
+                self.sound_manager.play("hammer_swing")
+                self.is_swinging = True
+                self.swing_timer = 0
+                mouse_pos = pygame.mouse.get_pos()
+                if self.building_system.build(self.inventory, self.building_system.current_blueprint):
+                    world.add_building(mouse_pos[0], mouse_pos[1], 
+                                    self.building_system.current_blueprint)
+        else:
+            if self.tools[self.current_tool].use():
+                # Play tool sound
+                self.sound_manager.play(f"{self.current_tool}_swing")
+                self.is_swinging = True
+                self.swing_timer = 0
+                
+                # Check for resource collection
+                mouse_pos = pygame.mouse.get_pos()
+                for tile in world.tiles:
+                    if tile["rect"].collidepoint(mouse_pos):
+                        if self.current_tool == "axe" and tile["type"] == "tree":
+                            self.inventory["wood"] += 1
+                            world.remove_tile(tile)
+                            world.particle_system.create_block_break(
+                                tile["rect"].centerx, tile["rect"].centery, 
+                                (34, 139, 34))  # Tree color
+                            self.sound_manager.play("block_break")
+                        elif self.current_tool == "pickaxe" and tile["type"] == "stone":
+                            self.inventory["stone"] += 1
+                            world.remove_tile(tile)
+                            world.particle_system.create_block_break(
+                                tile["rect"].centerx, tile["rect"].centery, 
+                                STONE_GRAY)
+                            self.sound_manager.play("block_break")
 
 class World:
     def __init__(self):
         self.tiles = []
         self.buildings = []
+        self.particle_system = ParticleSystem()
         self.generate_world()
         
     def generate_world(self):
@@ -212,21 +263,80 @@ class World:
         for tile in self.tiles:
             if tile["type"] == "grass":
                 color = GRASS_GREEN
+                pygame.draw.rect(screen, color, tile["rect"])
+                pygame.draw.rect(screen, (0, 0, 0), tile["rect"], 1)
             elif tile["type"] == "dirt":
                 color = DIRT_BROWN
+                pygame.draw.rect(screen, color, tile["rect"])
+                pygame.draw.rect(screen, (0, 0, 0), tile["rect"], 1)
             elif tile["type"] == "tree":
-                color = (34, 139, 34)  # Forest green
-            elif tile["type"] == "stone":
-                color = STONE_GRAY
+                # Draw trunk
+                trunk_color = (139, 69, 19)
+                trunk_rect = pygame.Rect(tile["rect"].x + 8, tile["rect"].y + tile["rect"].height - 16, 16, 16)
+                pygame.draw.rect(screen, trunk_color, trunk_rect)
+                pygame.draw.rect(screen, (0, 0, 0), trunk_rect, 1)
                 
-            pygame.draw.rect(screen, color, tile["rect"])
-            pygame.draw.rect(screen, (0, 0, 0), tile["rect"], 1)
+                # Draw leaves (triangle shape)
+                leaves_color = (34, 139, 34)
+                leaves_points = [
+                    (tile["rect"].x, tile["rect"].y + tile["rect"].height - 16),
+                    (tile["rect"].x + tile["rect"].width, tile["rect"].y + tile["rect"].height - 16),
+                    (tile["rect"].x + tile["rect"].width//2, tile["rect"].y)
+                ]
+                pygame.draw.polygon(screen, leaves_color, leaves_points)
+                pygame.draw.polygon(screen, (0, 0, 0), leaves_points, 1)
+            elif tile["type"] == "stone":
+                # Draw stone with shading
+                color = STONE_GRAY
+                pygame.draw.rect(screen, color, tile["rect"])
+                # Add highlights
+                highlight_color = (150, 150, 150)
+                pygame.draw.line(screen, highlight_color, 
+                               (tile["rect"].x, tile["rect"].y),
+                               (tile["rect"].x + tile["rect"].width, tile["rect"].y), 2)
+                pygame.draw.line(screen, highlight_color,
+                               (tile["rect"].x, tile["rect"].y),
+                               (tile["rect"].x, tile["rect"].y + tile["rect"].height), 2)
+                # Add shadows
+                shadow_color = (100, 100, 100)
+                pygame.draw.line(screen, shadow_color,
+                               (tile["rect"].x + tile["rect"].width, tile["rect"].y),
+                               (tile["rect"].x + tile["rect"].width, tile["rect"].y + tile["rect"].height), 2)
+                pygame.draw.line(screen, shadow_color,
+                               (tile["rect"].x, tile["rect"].y + tile["rect"].height),
+                               (tile["rect"].x + tile["rect"].width, tile["rect"].y + tile["rect"].height), 2)
+                pygame.draw.rect(screen, (0, 0, 0), tile["rect"], 1)
             
         # Draw buildings
         for building, blueprint_name in self.buildings:
-            color = (100, 100, 100) if blueprint_name == "house" else (200, 200, 200)
-            pygame.draw.rect(screen, color, building)
+            if blueprint_name == "house":
+                # Draw house with more detail
+                pygame.draw.rect(screen, (100, 100, 100), building)
+                # Draw roof
+                roof_points = [
+                    (building.x, building.y),
+                    (building.x + building.width, building.y),
+                    (building.x + building.width//2, building.y - 20)
+                ]
+                pygame.draw.polygon(screen, (139, 69, 19), roof_points)
+                # Draw door
+                door_rect = pygame.Rect(building.x + building.width//2 - 8,
+                                      building.y + building.height - 20,
+                                      16, 20)
+                pygame.draw.rect(screen, (139, 69, 19), door_rect)
+                # Draw window
+                window_rect = pygame.Rect(building.x + 8, building.y + 8, 8, 8)
+                pygame.draw.rect(screen, (255, 255, 255), window_rect)
+            else:
+                color = (200, 200, 200)
+                pygame.draw.rect(screen, color, building)
             pygame.draw.rect(screen, (0, 0, 0), building, 1)
+            
+        # Draw particles
+        self.particle_system.draw(screen)
+        
+    def update(self):
+        self.particle_system.update()
 
 def main():
     player = Player()
@@ -250,9 +360,9 @@ def main():
                     else:
                         player.building_system.current_blueprint = None
                 elif player.show_inventory:
-                    if event.key == pygame.K_LEFT:
+                    if event.key in [pygame.K_LEFT, pygame.K_a]:
                         player.selected_slot = (player.selected_slot - 1) % len(player.inventory_slots)
-                    elif event.key == pygame.K_RIGHT:
+                    elif event.key in [pygame.K_RIGHT, pygame.K_d]:
                         player.selected_slot = (player.selected_slot + 1) % len(player.inventory_slots)
                     elif event.key == pygame.K_RETURN:
                         player.switch_tool(player.inventory_slots[player.selected_slot]["name"])
@@ -264,13 +374,14 @@ def main():
         # Get keyboard state
         keys = pygame.key.get_pressed()
         if not player.show_inventory:  # Only allow movement when inventory is closed
-            if keys[pygame.K_a]:
+            if keys[pygame.K_a] or keys[pygame.K_LEFT]:
                 player.move(-PLAYER_SPEED)
-            if keys[pygame.K_d]:
+            if keys[pygame.K_d] or keys[pygame.K_RIGHT]:
                 player.move(PLAYER_SPEED)
             
         # Update
         player.update()
+        world.update()
         
         # Draw
         screen.fill(SKY_BLUE)
