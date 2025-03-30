@@ -261,35 +261,90 @@ class Character:
         
         self.walking_frames.append(frame2)
         
+        # Create swimming animation
+        self.swimming_frames = []
+        
+        # Swimming base - similar to standing but with arms out
+        swimming_base = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+        
+        # Copy the torso and head from the standing frame
+        for x in range(4, 12):
+            for y in range(1, 16):
+                if x >= 4 and x < 12 and y >= 1 and y < 16:
+                    color = self.surface.get_at((x * pixel_size, y * pixel_size))
+                    if color.a > 0:  # Only copy non-transparent pixels
+                        pygame.draw.rect(swimming_base, color, 
+                                      (x * pixel_size, y * pixel_size, pixel_size, pixel_size))
+        
+        # Draw arms in swimming position - extended horizontally
+        skin_color = (255, 200, 150)
+        skin_shadow = (220, 170, 130)
+        
+        # Left arm extended
+        for y in range(10, 12):
+            for x in range(0, 4):
+                color = skin_color if x > 1 else skin_shadow
+                pygame.draw.rect(swimming_base, color, 
+                               (x * pixel_size, y * pixel_size, pixel_size, pixel_size))
+        
+        # Right arm extended
+        for y in range(10, 12):
+            for x in range(12, 16):
+                color = skin_color if x < 14 else skin_shadow
+                pygame.draw.rect(swimming_base, color, 
+                               (x * pixel_size, y * pixel_size, pixel_size, pixel_size))
+        
+        # Swim frame 1 - legs together
+        swim_frame1 = swimming_base.copy()
+        for x in range(6, 10):
+            for y in range(16, 22):
+                pygame.draw.rect(swim_frame1, pants_color, 
+                               (x * pixel_size, y * pixel_size, pixel_size, pixel_size))
+        
+        # Swim frame 2 - legs apart (kicking)
+        swim_frame2 = swimming_base.copy()
+        # Left leg out
+        for x in range(4, 7):
+            for y in range(16, 23):
+                pygame.draw.rect(swim_frame2, pants_color, 
+                               (x * pixel_size, y * pixel_size, pixel_size, pixel_size))
+        # Right leg out
+        for x in range(9, 12):
+            for y in range(16, 23):
+                pygame.draw.rect(swim_frame2, pants_color, 
+                               (x * pixel_size, y * pixel_size, pixel_size, pixel_size))
+        
+        # Store swimming frames
+        self.swimming_frames.append(swim_frame1)
+        self.swimming_frames.append(swim_frame2)
+        
         # Animation properties
         self.current_frame = 0
         self.animation_timer = 0
-        self.animation_speed = 8
+        self.animation_speed = 12
         
-        # Add smooth pixel rendering
-        for i, frame in enumerate(self.walking_frames):
-            # Apply a slight blur for smoother look (optional)
-            temp_surface = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-            temp_surface.blit(frame, (0, 0))
-            self.walking_frames[i] = temp_surface
+    def draw(self, screen, x, y, facing_right=True, is_moving=False, is_swimming=False):
+        # Update animation
+        self.animation_timer += 1
+        if self.animation_timer >= self.animation_speed:
+            self.animation_timer = 0
+            self.current_frame = (self.current_frame + 1) % (2 if is_moving or is_swimming else 1)
         
-    def draw(self, screen, x, y, facing_right=True, is_moving=False):
-        # Only update animation timer and frames if the player is moving
-        if is_moving:
-            self.animation_timer += 1
-            if self.animation_timer >= self.animation_speed:
-                self.animation_timer = 0
-                self.current_frame = (self.current_frame + 1) % len(self.walking_frames)
+        # Select appropriate frame based on movement and swimming state
+        if is_swimming:
+            # Use swimming animation
+            frame = self.swimming_frames[self.current_frame % len(self.swimming_frames)]
         else:
-            # When not moving, always show the standing frame (first frame)
-            self.current_frame = 0
+            # Use walking/standing animation
+            frame_index = min(self.current_frame, len(self.walking_frames) - 1)
+            frame = self.walking_frames[frame_index if is_moving else 0]
+        
+        # Flip frame if facing left
+        if not facing_right:
+            frame = pygame.transform.flip(frame, True, False)
             
-        frame = self.walking_frames[self.current_frame]
-        if facing_right:
-            screen.blit(frame, (x, y))
-        else:
-            flipped = pygame.transform.flip(frame, True, False)
-            screen.blit(flipped, (x, y))
+        # Draw character
+        screen.blit(frame, (x, y))
 
 class Princess:
     def __init__(self):
@@ -846,6 +901,7 @@ class KingCrab:
         
         # Boss Stats
         self.health = 150 # Much higher health
+        self.max_health = 150  # Add max_health to match health
         self.damage = 25  # Higher damage
         self.attack_range = 60 # Slightly longer range
         self.attack_cooldown = 90 # Slower attacks
@@ -881,6 +937,247 @@ class KingCrab:
     def take_damage(self, amount):
         self.health -= amount
         return self.health <= 0 # Return True if defeated 
+
+class PrincessNPC:
+    def __init__(self, princess, game):
+        self.princess = princess
+        self.game = game
+        self.width = princess.width
+        self.height = princess.height
+        self.facing_right = True
+        self.is_moving = False
+        self.x = 0
+        self.y = 0
+
+    def draw(self, screen, camera_x):
+        # Only draw if on screen
+        if self.x + self.width > 0 and self.x < self.game.SCREEN_WIDTH:
+            # Draw princess - pass is_moving to princess draw method
+            self.princess.draw(screen, self.x, self.y, self.facing_right, self.is_moving)
+            
+            # ... existing code ... 
+
+class Fish:
+    def __init__(self):
+        # Create a simple fish sprite
+        self.width = 24
+        self.height = 12
+        
+        # Create base surface
+        self.surface = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+        
+        # Define pixel size for 32-bit style
+        pixel_size = 2
+        
+        # Define colors
+        body_color = (100, 180, 255)  # Blue fish
+        fin_color = (80, 160, 240)
+        eye_color = (0, 0, 0)
+        
+        # Draw fish body (oval shape)
+        for x in range(1, 10):
+            for y in range(2, 5):
+                # Body tapers at ends
+                if (x == 1 or x == 9) and (y < 2 or y > 4):
+                    continue
+                    
+                pygame.draw.rect(self.surface, body_color, 
+                               (x * pixel_size, y * pixel_size, 
+                                pixel_size, pixel_size))
+                
+        # Draw tail fin
+        for y in range(2, 5):
+            pygame.draw.rect(self.surface, fin_color, 
+                           (0 * pixel_size, y * pixel_size, pixel_size, pixel_size))
+            
+        # Draw top fin
+        pygame.draw.rect(self.surface, fin_color, 
+                       (5 * pixel_size, 1 * pixel_size, pixel_size, pixel_size))
+        
+        # Draw eye
+        pygame.draw.rect(self.surface, eye_color, 
+                       (7 * pixel_size, 3 * pixel_size, pixel_size, pixel_size))
+        
+        # Store animation frames (just 2 frames for simple animation)
+        self.walking_frames = [self.surface.copy()]
+        
+        # Create second frame with tail moved
+        frame2 = self.surface.copy()
+        # Clear tail area
+        for y in range(2, 5):
+            pygame.draw.rect(frame2, (0, 0, 0, 0), 
+                           (0 * pixel_size, y * pixel_size, pixel_size, pixel_size))
+        # Redraw tail in new position
+        for y in range(1, 6):
+            if y != 1 and y != 5:  # Don't draw corners for smooth look
+                pygame.draw.rect(frame2, fin_color, 
+                               (0 * pixel_size, y * pixel_size, pixel_size, pixel_size))
+                
+        self.walking_frames.append(frame2)
+        
+        # Animation properties
+        self.current_frame = 0
+        self.animation_timer = 0
+        self.animation_speed = 8  # Faster animation for fish
+        
+        # Fish stats
+        self.healing = 10  # Health gained when eaten
+        
+    def draw(self, screen, x, y, facing_right=True):
+        self.animation_timer += 1
+        if self.animation_timer >= self.animation_speed:
+            self.animation_timer = 0
+            self.current_frame = (self.current_frame + 1) % len(self.walking_frames)
+            
+        frame = self.walking_frames[self.current_frame]
+        if facing_right:
+            screen.blit(frame, (x, y))
+        else:
+            flipped = pygame.transform.flip(frame, True, False)
+            screen.blit(flipped, (x, y))
+    
+    def update(self):
+        # Fish don't have complex behaviors beyond animation
+        pass
+
+class Dinosaur:
+    def __init__(self):
+        # Create a dinosaur enemy
+        self.width = 48
+        self.height = 48
+        
+        # Create base surface
+        self.surface = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+        
+        # Define pixel size
+        pixel_size = 3
+        
+        # Define colors
+        body_color = (50, 120, 50)  # Green dinosaur
+        belly_color = (70, 150, 70)
+        eye_color = (200, 0, 0)  # Red eyes
+        
+        # Draw dinosaur body (T-Rex like)
+        # Main body
+        for x in range(2, 12):
+            for y in range(4, 10):
+                color = body_color
+                if y >= 8:  # Belly area
+                    color = belly_color
+                    
+                pygame.draw.rect(self.surface, color, 
+                               (x * pixel_size, y * pixel_size, 
+                                pixel_size, pixel_size))
+        
+        # Head (larger for T-Rex)
+        for x in range(10, 15):
+            for y in range(1, 6):
+                pygame.draw.rect(self.surface, body_color, 
+                               (x * pixel_size, y * pixel_size, 
+                                pixel_size, pixel_size))
+        
+        # Tail
+        for i in range(5):
+            x = 1 - i
+            y = 6 + i
+            pygame.draw.rect(self.surface, body_color, 
+                           (x * pixel_size, y * pixel_size, 
+                            pixel_size, pixel_size))
+        
+        # Legs
+        # Front leg
+        for y in range(9, 15):
+            pygame.draw.rect(self.surface, body_color, 
+                           (10 * pixel_size, y * pixel_size, 
+                            pixel_size, pixel_size))
+                           
+        # Back leg (larger)
+        for x in range(3, 6):
+            for y in range(10, 16):
+                pygame.draw.rect(self.surface, body_color, 
+                               (x * pixel_size, y * pixel_size, 
+                                pixel_size, pixel_size))
+        
+        # Eye
+        pygame.draw.rect(self.surface, eye_color, 
+                       (13 * pixel_size, 2 * pixel_size, 
+                        pixel_size, pixel_size))
+        
+        # Store animation frames
+        self.walking_frames = [self.surface.copy()]
+        
+        # Create second frame with legs in different position
+        frame2 = self.surface.copy()
+        
+        # Clear leg areas
+        for y in range(9, 16):
+            pygame.draw.rect(frame2, (0, 0, 0, 0), 
+                           (10 * pixel_size, y * pixel_size, 
+                            pixel_size, pixel_size))
+        for x in range(3, 6):
+            for y in range(10, 16):
+                pygame.draw.rect(frame2, (0, 0, 0, 0), 
+                               (x * pixel_size, y * pixel_size, 
+                                pixel_size, pixel_size))
+        
+        # Redraw legs in new positions
+        # Front leg
+        for y in range(10, 16):
+            pygame.draw.rect(frame2, body_color, 
+                           (11 * pixel_size, y * pixel_size, 
+                            pixel_size, pixel_size))
+                           
+        # Back leg
+        for x in range(4, 7):
+            for y in range(9, 15):
+                pygame.draw.rect(frame2, body_color, 
+                               (x * pixel_size, y * pixel_size, 
+                                pixel_size, pixel_size))
+                
+        self.walking_frames.append(frame2)
+        
+        # Animation properties
+        self.current_frame = 0
+        self.animation_timer = 0
+        self.animation_speed = 12
+        
+        # Dinosaur stats
+        self.max_health = 60
+        self.health = self.max_health
+        self.damage = 15
+        self.attack_range = 50
+        self.attack_cooldown = 75
+        self.current_cooldown = 0
+        
+    def draw(self, screen, x, y, facing_right=True):
+        self.animation_timer += 1
+        if self.animation_timer >= self.animation_speed:
+            self.animation_timer = 0
+            self.current_frame = (self.current_frame + 1) % len(self.walking_frames)
+            
+        frame = self.walking_frames[self.current_frame]
+        if facing_right:
+            screen.blit(frame, (x, y))
+        else:
+            flipped = pygame.transform.flip(frame, True, False)
+            screen.blit(flipped, (x, y))
+            
+    def can_attack(self):
+        return self.current_cooldown <= 0
+        
+    def attack(self):
+        if self.can_attack():
+            self.current_cooldown = self.attack_cooldown
+            return self.damage
+        return 0
+        
+    def update(self):
+        if self.current_cooldown > 0:
+            self.current_cooldown -= 1
+            
+    def take_damage(self, amount):
+        self.health -= amount
+        return self.health <= 0
 
 class PrincessNPC:
     def __init__(self, princess, game):

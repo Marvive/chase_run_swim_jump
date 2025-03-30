@@ -63,12 +63,16 @@ class NotificationSystem:
             notification["duration"] -= 1
             
     def draw(self, screen):
-        y_offset = 300
+        y_offset = 50  # Start at the top
         for notification in self.notifications:
             alpha = min(255, notification["duration"] * 3)
             notification_text = self.font.render(notification["text"], True, (255, 255, 255))
             text_surface = pygame.Surface(notification_text.get_size(), pygame.SRCALPHA)
             text_surface.fill((0, 0, 0, min(150, alpha)))
-            screen.blit(text_surface, (screen.get_width() // 2 - notification_text.get_width() // 2 - 5, y_offset - 5))
-            screen.blit(notification_text, (screen.get_width() // 2 - notification_text.get_width() // 2, y_offset))
+            
+            # Position on the right side of the screen with some padding
+            x_position = screen.get_width() - notification_text.get_width() - 20
+            
+            screen.blit(text_surface, (x_position - 5, y_offset - 5))
+            screen.blit(notification_text, (x_position, y_offset))
             y_offset += 40 
