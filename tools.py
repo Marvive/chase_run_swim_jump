@@ -105,4 +105,66 @@ class BuildingSystem:
         requirements = self.blueprints[blueprint_name]
         for material, amount in requirements.items():
             inventory[material] -= amount
-        return True 
+        return True
+
+class Axe:
+    def __init__(self):
+        self.cooldown = 30  # Frames between uses
+        self.current_cooldown = 0
+        self.animation_frame = 0
+        
+    def use(self):
+        if self.current_cooldown <= 0:
+            self.current_cooldown = self.cooldown
+            return True
+        return False
+        
+    def update(self):
+        if self.current_cooldown > 0:
+            self.current_cooldown -= 1
+            self.animation_frame = int((self.cooldown - self.current_cooldown) / self.cooldown * 5)
+        else:
+            self.animation_frame = 0
+
+class Pickaxe:
+    def __init__(self):
+        self.cooldown = 45  # Frames between uses (slower than axe)
+        self.current_cooldown = 0
+        self.animation_frame = 0
+        
+    def use(self):
+        if self.current_cooldown <= 0:
+            self.current_cooldown = self.cooldown
+            return True
+        return False
+        
+    def update(self):
+        if self.current_cooldown > 0:
+            self.current_cooldown -= 1
+            self.animation_frame = int((self.cooldown - self.current_cooldown) / self.cooldown * 5)
+        else:
+            self.animation_frame = 0
+
+class Sword:
+    def __init__(self):
+        self.cooldown = 20  # Frames between uses (faster than axe)
+        self.current_cooldown = 0
+        self.animation_frame = 0
+        self.damage = 15  # Base damage higher than basic tools
+        
+    def use(self):
+        if self.current_cooldown <= 0:
+            self.current_cooldown = self.cooldown
+            return True
+        return False
+        
+    def update(self):
+        if self.current_cooldown > 0:
+            self.current_cooldown -= 1
+            self.animation_frame = int((self.cooldown - self.current_cooldown) / self.cooldown * 5)
+        else:
+            self.animation_frame = 0
+            
+    def get_damage(self, player_level):
+        # Increase damage based on player level
+        return self.damage + (player_level * 2)  # +2 damage per level 

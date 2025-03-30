@@ -34,6 +34,22 @@ class Particle:
                              (self.size//2, self.size//2), self.size//2)
             screen.blit(surface, (self.x, self.y))
 
+    def draw_with_camera(self, screen, camera_x):
+        # Draw with camera offset
+        screen_x = self.x - camera_x
+        if screen_x < -10 or screen_x > screen.get_width() + 10:
+            return  # Off-screen culling
+            
+        if self.type == "block":
+            surface = pygame.Surface((self.size, self.size), pygame.SRCALPHA)
+            pygame.draw.rect(surface, (*self.color, self.alpha), (0, 0, self.size, self.size))
+            screen.blit(surface, (screen_x, self.y))
+        elif self.type == "spark":
+            surface = pygame.Surface((self.size, self.size), pygame.SRCALPHA)
+            pygame.draw.circle(surface, (255, 255, 255, self.alpha), 
+                             (self.size//2, self.size//2), self.size//2)
+            screen.blit(surface, (screen_x, self.y))
+
 class ParticleSystem:
     def __init__(self):
         self.particles = []
@@ -51,6 +67,9 @@ class ParticleSystem:
         for particle in self.particles:
             particle.update()
             
-    def draw(self, screen):
+    def draw(self, screen, camera_x=0):
         for particle in self.particles:
-            particle.draw(screen) 
+            if camera_x == 0:
+                particle.draw(screen)
+            else:
+                particle.draw_with_camera(screen, camera_x) 

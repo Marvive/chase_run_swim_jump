@@ -18,6 +18,7 @@ class SoundManager:
         self.generate_sound("pickaxe_swing", 0.1, 220, 0.5)
         self.generate_sound("hammer_swing", 0.1, 330, 0.5)
         self.generate_sound("block_break", 0.05, 880, 0.3)
+        self.generate_sound("sword_swing", 0.1, 440, 0.5)
         
     def generate_sound(self, name, duration, frequency, volume):
         sample_rate = 44100
