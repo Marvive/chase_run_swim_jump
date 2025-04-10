@@ -116,7 +116,10 @@ class Game:
                         if closest_object:
                             self.player.interact(self.world, closest_object)
                         else:
-                            self.notification_system.add_notification("Nothing to interact with nearby")
+                            # Only show notification if cooldown has expired
+                            if self.player.last_interaction_notification <= 0:
+                                self.notification_system.add_notification("Nothing to interact with nearby")
+                                self.player.last_interaction_notification = self.player.notification_cooldown
                 elif event.key == pygame.K_h:
                     self.tooltip.toggle_help()
                 elif event.key == pygame.K_1:
@@ -434,6 +437,10 @@ class Player:
         self.is_moving = False
         self.swimming = False  # Track if player is swimming
         
+        # Add notification cooldown timer
+        self.last_interaction_notification = 0  # Frame counter for notification cooldown
+        self.notification_cooldown = 120  # 2 seconds at 60fps
+        
         # Tools initialization
         self.tools = {
             "axe": Axe(),
@@ -552,6 +559,10 @@ class Player:
         if self.invincibility_frames > 0:
             self.invincibility_frames -= 1
             
+        # Update notification cooldown
+        if self.last_interaction_notification > 0:
+            self.last_interaction_notification -= 1
+    
     def check_water_collision(self):
         """Check if player is in water and update swimming state"""
         # Only check for water in level 2+
@@ -655,7 +666,10 @@ class Player:
                     self.game.notification_system.add_notification("Not enough resources!")
         else:
             if not clicked_object:
-                self.game.notification_system.add_notification("Nothing to interact with nearby")
+                # Only show notification if cooldown has expired
+                if self.last_interaction_notification <= 0:
+                    self.game.notification_system.add_notification("Nothing to interact with nearby")
+                    self.last_interaction_notification = self.notification_cooldown
                 return
                 
             if self.tools[self.current_tool].use():
@@ -932,9 +946,6 @@ class Player:
                 # Attack missed all enemies
                 pass
         
-        elif self.current_tool == "sword": # Sword was selected but on cooldown
-             self.game.notification_system.add_notification("Sword not ready!")
-    
     def deal_damage_to_enemy(self, world, enemy):
         """Calculates and applies damage to a specific enemy."""
         enemy_obj = enemy["enemy_obj"]
@@ -1180,6 +1191,9 @@ class World:
             fish = Fish(self.game, fish_x, fish_y)
             self.resources.append(fish)
         
+        # Initialize resource count
+        resource_count = 0
+        
         # Add jungle trees (more than on the beach)
         for _ in range(20):
             x = random.randint(5, world_width - 5)
@@ -1187,12 +1201,22 @@ class World:
             if not (lake_x <= x < lake_x + lake_width):
                 # Find the ground height at this position
                 y = terrain_heights[x]
-                tree = {
-                    "x": x * self.game.TILE_SIZE,
-                    "y": (y - 8) * self.game.TILE_SIZE,  # Trees are 8 tiles tall
-                    "type": "tree"
-                }
-                self.trees.append(tree)
+                tree_height = random.randint(3, 5) * self.game.TILE_SIZE
+                tree_width = random.randint(self.game.TILE_SIZE - 8, self.game.TILE_SIZE + 8)
+                
+                # Place tree on top of the ground
+                tree_x = x * self.game.TILE_SIZE
+                tree_y = y * self.game.TILE_SIZE - tree_height
+                
+                # Add tree as a tile (same format as level 1 trees)
+                self.tiles.append({
+                    "rect": pygame.Rect(tree_x, tree_y, tree_width, tree_height),
+                    "type": "tree",
+                    "variant": random.randint(0, 2),
+                    "x": tree_x,
+                    "y": tree_y
+                })
+                resource_count += 1
         
         # Add dinosaurs
         for _ in range(5):
@@ -1225,14 +1249,27 @@ class World:
                 y = terrain_heights[x] - 1  # Place on top of ground
                 resource_type = random.choice(["wood", "stone", "gold"])
                 # Create a resource dictionary instead of class
+                
+                # Instead of placing resources as tiles, add them as resources with proper visibility
+                resource_height = self.game.TILE_SIZE
+                resource_width = self.game.TILE_SIZE
+                resource_x = x * self.game.TILE_SIZE
+                resource_y = y * self.game.TILE_SIZE - resource_height
+                
                 resource = {
-                    "x": x * self.game.TILE_SIZE,
-                    "y": y * self.game.TILE_SIZE,
+                    "x": resource_x,
+                    "y": resource_y,
                     "type": resource_type,
                     "health": 30,
-                    "rect": pygame.Rect(x * self.game.TILE_SIZE, y * self.game.TILE_SIZE, self.game.TILE_SIZE, self.game.TILE_SIZE)
+                    "rect": pygame.Rect(resource_x, resource_y, resource_width, resource_height)
                 }
                 self.resources.append(resource)
+                if resource_type in ["stone", "wood"]:
+                    resource_count += 1
+        
+        # Set initial resource count
+        self.initial_resource_count = resource_count
+        print(f"Initial resource count: {self.initial_resource_count}")
     
     def generate_clouds(self):
         """Generate clouds for any level"""
@@ -1363,20 +1400,6 @@ class World:
                 blue_val = 164 + int(10 * math.sin(pygame.time.get_ticks() / 500))
                 water_surface.fill((64, blue_val, 223, 180))  # Blue with alpha
                 screen.blit(water_surface, (screen_x, screen_y))
-        
-        # Draw trees
-        for tree in self.trees:
-            screen_x = tree["x"] - camera_x
-            screen_y = tree["y"] - camera_y
-            
-            # Only draw if on screen
-            if (screen_x > -self.game.TILE_SIZE*3 and screen_x < self.game.SCREEN_WIDTH and
-                screen_y > -self.game.TILE_SIZE*8 and screen_y < self.game.SCREEN_HEIGHT):
-                # Draw tree trunk
-                pygame.draw.rect(screen, (139, 69, 19), (screen_x + 8, screen_y + 32, 16, 48))
-                
-                # Draw tree leaves
-                pygame.draw.circle(screen, (34, 139, 34), (screen_x + 16, screen_y + 16), 32)
         
         # Draw all resources
         for resource in self.resources:
